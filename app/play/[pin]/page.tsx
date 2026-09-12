@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useGameRealtime } from "@/lib/useGameRealtime";
+import { useSound } from "@/lib/useSound";
+import { SoundToggle } from "@/app/components/SoundToggle";
 
 type Game = {
   id: string;
@@ -22,7 +24,12 @@ type ApiState = {
   totalQuestions: number;
 };
 
-type AnswerResult = { questionIndex: number; isCorrect: boolean; points: number };
+type AnswerResult = {
+  questionIndex: number;
+  selectedIndex: number | null;
+  isCorrect: boolean;
+  points: number;
+};
 type RevealData = { correctIndex: number; exp: string; counts: number[] };
 
 const SHAPES = ["▲", "◆", "●", "■"];
@@ -35,6 +42,7 @@ function storageKey(pin: string) {
 export default function PlayPage() {
   const params = useParams<{ pin: string }>();
   const pin = params.pin;
+  const sound = useSound();
 
   const [name, setName] = useState("");
   const [player, setPlayer] = useState<{ id: string; name: string } | null>(null);
@@ -43,15 +51,32 @@ export default function PlayPage() {
 
   const [state, setState] = useState<ApiState | null>(null);
   const [error, setError] = useState("");
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [answerResult, setAnswerResult] = useState<AnswerResult | null>(null);
   const [reveal, setReveal] = useState<RevealData | null>(null);
+
+  // Refs so the per-question timer effect (set up once per question) can
+  // always see the latest values without re-subscribing every render —
+  // this is what keeps the countdown/auto-submit logic race-free. Synced
+  // in an effect (not during render) so React never sees a ref write as
+  // part of rendering.
+  const playerRef = useRef(player);
+  const answerResultRef = useRef(answerResult);
+  const submittingRef = useRef(submitting);
+  const timeoutHandledFor = useRef<number | null>(null);
+
+  useEffect(() => {
+    playerRef.current = player;
+    answerResultRef.current = answerResult;
+    submittingRef.current = submitting;
+  }, [player, answerResult, submitting]);
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey(pin));
     if (saved) {
       try {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- reading localStorage needs an effect (not available during render/SSR)
         setPlayer(JSON.parse(saved));
       } catch {
         /* ignore */
@@ -71,6 +96,7 @@ export default function PlayPage() {
   }, [pin]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- standard fetch-on-mount
     refresh();
   }, [refresh]);
 
@@ -79,6 +105,7 @@ export default function PlayPage() {
   // Fetch the reveal (correct answer + explanation) once the host flips status.
   useEffect(() => {
     if (state?.game.status !== "reveal") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing stale reveal data when leaving the reveal status
       setReveal(null);
       return;
     }
@@ -90,28 +117,104 @@ export default function PlayPage() {
       .catch(() => {});
   }, [state?.game.status, pin]);
 
-  // Local countdown for the question view.
+  const submitAnswer = useCallback(
+    async (selectedIndex: number | null) => {
+      const p = playerRef.current;
+      const currentState = state;
+      if (!p || !currentState || submittingRef.current) return;
+      // Never resubmit for a question we already have a result for.
+      if (answerResultRef.current?.questionIndex === currentState.game.current_question) {
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const res = await fetch(`/api/games/${pin}/answer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            playerId: p.id,
+            questionIndex: currentState.game.current_question,
+            selectedIndex,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          const result: AnswerResult = {
+            questionIndex: currentState.game.current_question,
+            selectedIndex,
+            isCorrect: !!data.isCorrect,
+            points: data.points ?? 0,
+          };
+          setAnswerResult(result);
+          sound.play(result.isCorrect ? "correct" : "wrong");
+        }
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pin, state]
+  );
+
+  const submitAnswerRef = useRef(submitAnswer);
+  useEffect(() => {
+    submitAnswerRef.current = submitAnswer;
+  }, [submitAnswer]);
+
+  // Countdown for the current question, set up exactly once per question.
+  // The auto-submit-on-timeout check lives *inside* this same tick loop
+  // (guarded by timeoutHandledFor) instead of a separate effect reading
+  // `timeLeft` state, which is what previously caused an immediate
+  // false-positive auto-submit right as a question started (timeLeft's
+  // initial value of 0 was indistinguishable from "time's actually up").
   useEffect(() => {
     const game = state?.game;
-    if (!game || game.status !== "question" || !game.question_started_at) return;
+    if (!game || game.status !== "question" || !game.question_started_at) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing the countdown when there's no active question to count down
+      setTimeLeft(null);
+      return;
+    }
     const startedAt = new Date(game.question_started_at).getTime();
     const seconds = game.question_seconds;
+    const questionIndex = game.current_question;
+    let lastWholeSecond = -1;
+
     const tick = () => {
       const elapsed = (Date.now() - startedAt) / 1000;
-      setTimeLeft(Math.max(0, Math.ceil(seconds - elapsed)));
+      const left = Math.max(0, seconds - elapsed);
+      const leftCeil = Math.ceil(left);
+      setTimeLeft(leftCeil);
+
+      if (leftCeil !== lastWholeSecond && leftCeil > 0) {
+        lastWholeSecond = leftCeil;
+        sound.play("tick");
+      }
+
+      if (
+        left <= 0 &&
+        timeoutHandledFor.current !== questionIndex &&
+        answerResultRef.current?.questionIndex !== questionIndex
+      ) {
+        timeoutHandledFor.current = questionIndex;
+        submitAnswerRef.current(null);
+      }
     };
+
     tick();
-    const interval = setInterval(tick, 250);
+    const interval = setInterval(tick, 200);
     return () => clearInterval(interval);
-  }, [state?.game.status, state?.game.current_question, state?.game.question_started_at]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.game.status, state?.game.current_question, state?.game.question_started_at, state?.game.question_seconds]);
 
   // Reset per-question UI when a new question starts.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting local UI state when the question index changes
     setAnswerResult(null);
-  }, [state?.game.current_question, state?.game.status === "question"]);
+  }, [state?.game.current_question]);
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
+    sound.unlock(); // user gesture: safe to unlock audio here
     const cleanName = name.trim().slice(0, 24);
     if (!cleanName) {
       setJoinError("请输入你的名字");
@@ -130,6 +233,7 @@ export default function PlayPage() {
       const p = { id: data.player.id, name: data.player.name };
       localStorage.setItem(storageKey(pin), JSON.stringify(p));
       setPlayer(p);
+      sound.play("join");
       refresh();
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : "加入失败");
@@ -138,44 +242,11 @@ export default function PlayPage() {
     }
   }
 
-  async function submitAnswer(selectedIndex: number | null) {
-    if (!player || !state || submitting) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/games/${pin}/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          playerId: player.id,
-          questionIndex: state.game.current_question,
-          selectedIndex,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setAnswerResult({
-          questionIndex: state.game.current_question,
-          isCorrect: !!data.isCorrect,
-          points: data.points ?? 0,
-        });
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  // Auto-submit a "no answer" once time runs out, if the player hasn't answered.
-  useEffect(() => {
-    if (state?.game.status === "question" && timeLeft === 0 && !answerResult && !submitting) {
-      submitAnswer(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, state?.game.status]);
-
   const myPlayer = useMemo(
     () => state?.players.find((p) => p.id === player?.id) ?? null,
     [state?.players, player?.id]
   );
+
   if (!player) {
     return (
       <main className="min-h-screen bg-[#46178f] text-white flex items-center justify-center p-6">
@@ -212,9 +283,11 @@ export default function PlayPage() {
   }
 
   const { game } = state;
+  const hasAnsweredThisQuestion = answerResult?.questionIndex === game.current_question;
 
   return (
     <main className="min-h-screen bg-[#46178f] text-white flex flex-col items-center justify-center p-4 md:p-8">
+      <SoundToggle enabled={sound.enabled} onToggle={sound.toggle} />
       <div className="w-full max-w-2xl mx-auto">
         {game.status === "lobby" && (
           <div className="bg-white text-slate-800 rounded-3xl p-8 shadow-2xl text-center border-4 border-amber-400">
@@ -224,14 +297,14 @@ export default function PlayPage() {
           </div>
         )}
 
-        {game.status === "question" && state.question && !answerResult && (
+        {game.status === "question" && state.question && !hasAnsweredThisQuestion && (
           <div className="w-full flex flex-col items-center">
             <div className="w-full flex justify-between items-center mb-4 px-2">
               <span className="bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full font-bold">
                 问题 {game.current_question + 1} / {state.totalQuestions}
               </span>
               <div className="flex items-center space-x-2 bg-amber-400 text-purple-950 px-5 py-1.5 rounded-full font-black text-xl shadow-lg">
-                🕒 <span>{timeLeft}</span>
+                🕒 <span>{timeLeft ?? game.question_seconds}</span>
               </div>
             </div>
             <div className="bg-white text-slate-900 rounded-3xl p-6 shadow-2xl w-full text-center mb-6 min-h-[120px] flex items-center justify-center border-4 border-purple-300">
@@ -241,7 +314,10 @@ export default function PlayPage() {
               {state.question.options.map((_, i) => (
                 <button
                   key={i}
-                  onClick={() => submitAnswer(i)}
+                  onClick={() => {
+                    sound.unlock();
+                    submitAnswer(i);
+                  }}
                   disabled={submitting}
                   className={`${COLORS[i]} disabled:opacity-60 p-8 rounded-2xl text-white font-black text-4xl flex items-center justify-center transition transform active:scale-95`}
                 >
@@ -252,7 +328,7 @@ export default function PlayPage() {
           </div>
         )}
 
-        {game.status === "question" && answerResult && (
+        {game.status === "question" && hasAnsweredThisQuestion && (
           <div className="bg-white text-slate-900 rounded-3xl p-8 shadow-2xl text-center border-4 border-purple-300">
             <p className="text-2xl font-black mb-2">✅ 已提交答案</p>
             <p className="text-slate-500 font-medium">等待其他同学作答…</p>
@@ -265,7 +341,13 @@ export default function PlayPage() {
               {answerResult ? (answerResult.isCorrect ? "✓" : "✗") : "…"}
             </div>
             <h2 className="text-2xl font-black mb-2">
-              {answerResult ? (answerResult.isCorrect ? "回答正确！太棒了！" : "回答错误，继续加油！") : "时间到！"}
+              {!answerResult
+                ? "…"
+                : answerResult.isCorrect
+                ? "回答正确！太棒了！"
+                : answerResult.selectedIndex === null
+                ? "时间到！"
+                : "回答错误，继续加油！"}
             </h2>
             <p className="text-lg font-bold text-amber-600 mb-4">
               {answerResult ? `+${answerResult.points} 分` : "+0 分"}

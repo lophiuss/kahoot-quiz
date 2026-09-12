@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import QRCode from "qrcode";
 import { useGameRealtime } from "@/lib/useGameRealtime";
+import { useSound } from "@/lib/useSound";
+import { SoundToggle } from "@/app/components/SoundToggle";
 
 type Game = {
   id: string;
@@ -32,6 +34,7 @@ const COLORS = ["bg-[#e21b3c]", "bg-[#1368ce]", "bg-[#d89e00]", "bg-[#26890c]"];
 export default function HostPage() {
   const params = useParams<{ pin: string }>();
   const pin = params.pin;
+  const sound = useSound();
 
   const [state, setState] = useState<ApiState | null>(null);
   const [error, setError] = useState("");
@@ -52,6 +55,7 @@ export default function HostPage() {
   }, [pin]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- standard fetch-on-mount
     refresh();
   }, [refresh]);
 
@@ -65,6 +69,22 @@ export default function HostPage() {
       .catch(() => {});
   }, [pin]);
 
+  const triggerReveal = useCallback(async () => {
+    const res = await fetch(`/api/games/${pin}/reveal`, { method: "POST" });
+    const data = await res.json();
+    if (res.ok) {
+      setReveal(data);
+      sound.play("correct");
+    }
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin, refresh]);
+
+  const triggerRevealRef = useRef(triggerReveal);
+  useEffect(() => {
+    triggerRevealRef.current = triggerReveal;
+  }, [triggerReveal]);
+
   // Countdown + auto-reveal, driven by the server's question_started_at.
   useEffect(() => {
     const game = state?.game;
@@ -72,14 +92,19 @@ export default function HostPage() {
 
     const startedAt = new Date(game.question_started_at).getTime();
     const seconds = game.question_seconds;
+    let lastWholeSecond = -1;
 
     const tick = () => {
       const elapsed = (Date.now() - startedAt) / 1000;
       const left = Math.max(0, Math.ceil(seconds - elapsed));
       setTimeLeft(left);
+      if (left !== lastWholeSecond && left > 0) {
+        lastWholeSecond = left;
+        sound.play("tick");
+      }
       if (left <= 0 && revealTriggeredFor.current !== game.current_question) {
         revealTriggeredFor.current = game.current_question;
-        triggerReveal();
+        triggerRevealRef.current();
       }
     };
     tick();
@@ -89,18 +114,12 @@ export default function HostPage() {
   }, [state?.game.status, state?.game.current_question, state?.game.question_started_at]);
 
   async function startQuiz() {
+    sound.unlock(); // user gesture: safe to unlock audio here
     setError("");
     const res = await fetch(`/api/games/${pin}/start`, { method: "POST" });
     const data = await res.json();
     if (!res.ok) setError(data.error ?? "Could not start");
     else refresh();
-  }
-
-  async function triggerReveal() {
-    const res = await fetch(`/api/games/${pin}/reveal`, { method: "POST" });
-    const data = await res.json();
-    if (res.ok) setReveal(data);
-    refresh();
   }
 
   async function nextQuestion() {
@@ -128,6 +147,7 @@ export default function HostPage() {
 
   return (
     <main className="min-h-screen bg-[#46178f] text-white flex flex-col items-center p-4 md:p-8">
+      <SoundToggle enabled={sound.enabled} onToggle={sound.toggle} />
       <div className="w-full max-w-5xl mx-auto">
         {game.status === "lobby" && (
           <div className="bg-white text-slate-800 rounded-3xl p-8 shadow-2xl w-full border-4 border-amber-400 flex flex-col md:flex-row items-center justify-between gap-8">

@@ -10,7 +10,9 @@ import { getBrowserSupabase } from "@/lib/supabase/client";
  */
 export function useGameRealtime(gameId: string | null, onChange: () => void) {
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     if (!gameId) return;
