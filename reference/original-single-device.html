@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教会与教堂的团体结构 —— Kahoot 互动答题游戏</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- QRCode.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background-color: #46178f; /* Kahoot Purple */
+            color: #ffffff;
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        .font-kahoot {
+            font-family: 'Montserrat', 'Noto Sans SC', sans-serif;
+        }
+
+        /* Kahoot Shape Colors & Animations */
+        .btn-red {
+            background-color: #e21b3c;
+            box-shadow: 0 6px 0 #9b0017;
+        }
+        .btn-red:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #9b0017;
+        }
+
+        .btn-blue {
+            background-color: #1368ce;
+            box-shadow: 0 6px 0 #093b7b;
+        }
+        .btn-blue:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #093b7b;
+        }
+
+        .btn-yellow {
+            background-color: #d89e00;
+            box-shadow: 0 6px 0 #876200;
+        }
+        .btn-yellow:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #876200;
+        }
+
+        .btn-green {
+            background-color: #26890c;
+            box-shadow: 0 6px 0 #144f04;
+        }
+        .btn-green:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #144f04;
+        }
+
+        /* Quiz Timer Progress Bar */
+        .timer-bar {
+            transition: width 1s linear;
+        }
+
+        /* Shake animation for wrong answer */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+        .animate-shake {
+            animation: shake 0.5s;
+        }
+
+        /* Bounce animation for icons */
+        @keyframes bounce-subtle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+        .animate-bounce-subtle {
+            animation: bounce-subtle 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4 md:p-8 relative">
+
+    <!-- Top Header Bar -->
+    <header class="w-full flex justify-between items-center max-w-5xl mx-auto mb-4 z-10">
+        <div class="flex items-center space-x-3 bg-white/10 px-4 py-2 rounded-2xl backdrop-blur-md">
+            <i class="fa-solid fa-church text-amber-400 text-2xl"></i>
+            <span class="font-bold text-lg md:text-xl tracking-wide">坚振备课系列 · 第25课</span>
+        </div>
+        <div id="sound-toggle" onclick="toggleSound()" class="cursor-pointer bg-white/10 hover:bg-white/20 p-3 rounded-full transition duration-200">
+            <i id="sound-icon" class="fa-solid fa-volume-high text-xl"></i>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="w-full max-w-4xl mx-auto flex-1 flex flex-col justify-center items-center z-10">
+        
+        <!-- 1. START / MODE SELECTOR VIEW -->
+        <section id="view-start" class="w-full text-center flex flex-col items-center">
+            <div class="bg-white text-purple-900 rounded-3xl p-8 shadow-2xl w-full max-w-2xl border-4 border-amber-400">
+                <span class="bg-amber-100 text-amber-800 font-bold px-4 py-1.5 rounded-full text-sm inline-block mb-3">
+                    <i class="fa-solid fa-gamepad mr-2"></i>Kahoot 知识大挑战
+                </span>
+                <h1 class="font-kahoot text-3xl md:text-4xl font-black mb-3 text-purple-950">
+                    教会与教堂的团体结构
+                </h1>
+                <p class="text-slate-600 font-medium mb-8 text-base md:text-lg">
+                    探索基督的肢体与共同体的使命 · 10题趣味竞答
+                </p>
+
+                <div class="space-y-4 w-full">
+                    <button onclick="startHostMode()" class="w-full py-4 px-6 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-2xl text-lg md:text-xl shadow-lg transition transform hover:-translate-y-0.5 flex items-center justify-center space-x-3">
+                        <i class="fa-solid fa-qrcode text-2xl"></i>
+                        <span>📱 投影模式（生成二维码与PIN码供投屏）</span>
+                    </button>
+                    
+                    <button onclick="startSinglePlayer()" class="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl text-lg md:text-xl shadow-lg transition transform hover:-translate-y-0.5 flex items-center justify-center space-x-3">
+                        <i class="fa-solid fa-bolt text-2xl text-yellow-300"></i>
+                        <span>⚡ 个人挑战模式（直接开始答题）</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. HOST LOBBY VIEW (WITH QR CODE & PIN) -->
+        <section id="view-lobby" class="w-full hidden text-center flex flex-col items-center">
+            <div class="bg-white text-slate-800 rounded-3xl p-8 shadow-2xl w-full max-w-3xl border-4 border-amber-400 flex flex-col md:flex-row items-center justify-between gap-8">
+                
+                <!-- Left: QR Code Container -->
+                <div class="flex flex-col items-center justify-center bg-purple-50 p-6 rounded-2xl border-2 border-purple-200">
+                    <div id="qrcode-box" class="p-3 bg-white rounded-xl shadow-md border border-slate-200"></div>
+                    <p class="mt-4 font-bold text-purple-900 text-base flex items-center">
+                        <i class="fa-solid fa-camera mr-2 text-amber-600"></i>用手机相机或微信扫码加入
+                    </p>
+                </div>
+
+                <!-- Right: Game PIN & Player List -->
+                <div class="flex-1 flex flex-col items-center justify-center w-full">
+                    <div class="bg-slate-900 text-white w-full p-4 rounded-2xl mb-6 shadow-inner">
+                        <span class="text-xs tracking-widest text-slate-400 uppercase font-bold block mb-1">GAME PIN 游戏码</span>
+                        <span id="game-pin" class="font-kahoot text-4xl md:text-5xl font-black text-amber-400 tracking-wider">888 999</span>
+                    </div>
+
+                    <div class="w-full mb-6">
+                        <div class="flex justify-between items-center mb-2 px-2">
+                            <span class="font-bold text-slate-700"><i class="fa-solid fa-users mr-2 text-purple-600"></i>已就绪学员：</span>
+                            <span id="player-count" class="bg-purple-100 text-purple-800 font-bold px-3 py-0.5 rounded-full text-sm">1 人</span>
+                        </div>
+                        <div id="player-list" class="flex flex-wrap gap-2 justify-center max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+                            <span class="bg-purple-600 text-white font-bold px-4 py-1.5 rounded-xl text-sm shadow animate-bounce-subtle">全班学员</span>
+                        </div>
+                    </div>
+
+                    <button onclick="startQuizFromLobby()" class="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xl rounded-2xl shadow-lg transition">
+                        开始答题 (START)
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. QUIZ QUESTION VIEW -->
+        <section id="view-quiz" class="w-full hidden flex flex-col items-center">
+            
+            <!-- Top Progress & Timer -->
+            <div class="w-full flex justify-between items-center mb-4 px-2">
+                <span id="question-tracker" class="bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full font-bold text-lg">
+                    问题 1 / 10
+                </span>
+                <div class="flex items-center space-x-2 bg-amber-400 text-purple-950 px-5 py-1.5 rounded-full font-black text-xl shadow-lg">
+                    <i class="fa-regular fa-clock"></i>
+                    <span id="timer-count">20</span>
+                </div>
+            </div>
+
+            <!-- Timer Progress Bar -->
+            <div class="w-full bg-white/20 h-3 rounded-full mb-6 overflow-hidden">
+                <div id="timer-bar" class="timer-bar bg-amber-400 h-full w-full"></div>
+            </div>
+
+            <!-- Question Card -->
+            <div class="bg-white text-slate-900 rounded-3xl p-6 md:p-8 shadow-2xl w-full text-center mb-6 min-h-[160px] flex items-center justify-center border-4 border-purple-300">
+                <h2 id="question-text" class="text-xl md:text-3xl font-bold leading-snug">
+                    加载题目中...
+                </h2>
+            </div>
+
+            <!-- 4 Kahoot Shape Answer Buttons -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                <button onclick="submitAnswer(0)" class="btn-red p-5 md:p-6 rounded-2xl text-white font-bold text-lg md:text-xl flex items-center space-x-4 text-left transition transform hover:scale-[1.01]">
+                    <span class="bg-black/20 w-10 h-10 rounded-xl flex items-center justify-center font-black text-2xl flex-shrink-0">▲</span>
+                    <span id="opt-0" class="flex-1">选项 1</span>
+                </button>
+
+                <button onclick="submitAnswer(1)" class="btn-blue p-5 md:p-6 rounded-2xl text-white font-bold text-lg md:text-xl flex items-center space-x-4 text-left transition transform hover:scale-[1.01]">
+                    <span class="bg-black/20 w-10 h-10 rounded-xl flex items-center justify-center font-black text-2xl flex-shrink-0">◆</span>
+                    <span id="opt-1" class="flex-1">选项 2</span>
+                </button>
+
+                <button onclick="submitAnswer(2)" class="btn-yellow p-5 md:p-6 rounded-2xl text-white font-bold text-lg md:text-xl flex items-center space-x-4 text-left transition transform hover:scale-[1.01]">
+                    <span class="bg-black/20 w-10 h-10 rounded-xl flex items-center justify-center font-black text-2xl flex-shrink-0">●</span>
+                    <span id="opt-2" class="flex-1">选项 3</span>
+                </button>
+
+                <button onclick="submitAnswer(3)" class="btn-green p-5 md:p-6 rounded-2xl text-white font-bold text-lg md:text-xl flex items-center space-x-4 text-left transition transform hover:scale-[1.01]">
+                    <span class="bg-black/20 w-10 h-10 rounded-xl flex items-center justify-center font-black text-2xl flex-shrink-0">■</span>
+                    <span id="opt-3" class="flex-1">选项 4</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- 4. QUESTION FEEDBACK VIEW -->
+        <section id="view-feedback" class="w-full hidden text-center flex flex-col items-center">
+            <div id="feedback-card" class="bg-white text-slate-900 rounded-3xl p-8 shadow-2xl w-full max-w-2xl flex flex-col items-center">
+                <div id="feedback-icon" class="w-24 h-24 rounded-full flex items-center justify-center text-5xl mb-4 text-white">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <h2 id="feedback-title" class="text-3xl font-black mb-2">回答正确！</h2>
+                <p id="feedback-pts" class="text-xl font-bold text-amber-600 mb-4">+950 分</p>
+
+                <!-- Explanation Box -->
+                <div class="bg-purple-50 text-purple-900 p-4 rounded-2xl text-left border border-purple-200 w-full mb-6">
+                    <span class="font-bold block text-sm mb-1 text-purple-700">💡 核心教理解析：</span>
+                    <p id="feedback-exp" class="text-base font-medium leading-relaxed">解析说明内容...</p>
+                </div>
+
+                <button onclick="nextQuestion()" class="w-full py-4 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xl rounded-2xl shadow-lg transition">
+                    下一题 (NEXT)
+                </button>
+            </div>
+        </section>
+
+        <!-- 5. FINAL PODIUM / LEADERBOARD VIEW -->
+        <section id="view-podium" class="w-full hidden text-center flex flex-col items-center">
+            <div class="bg-white text-slate-900 rounded-3xl p-8 shadow-2xl w-full max-w-2xl border-4 border-amber-400">
+                <div class="inline-block bg-amber-100 text-amber-800 p-4 rounded-full mb-3">
+                    <i class="fa-solid fa-trophy text-5xl text-amber-500"></i>
+                </div>
+                <h2 class="text-3xl font-black mb-1">挑战完成！表现卓越！</h2>
+                <p class="text-slate-500 mb-6 font-medium">教会与教堂的团体结构 知识大合集</p>
+
+                <!-- Final Score Display -->
+                <div class="bg-slate-900 text-white p-6 rounded-2xl mb-6 shadow-inner flex justify-around items-center">
+                    <div>
+                        <span class="text-xs text-slate-400 font-bold block mb-1">最终得分</span>
+                        <span id="final-score" class="text-4xl font-black text-amber-400">0</span>
+                    </div>
+                    <div class="h-10 w-0.5 bg-slate-700"></div>
+                    <div>
+                        <span class="text-xs text-slate-400 font-bold block mb-1">正确率</span>
+                        <span id="final-accuracy" class="text-4xl font-black text-emerald-400">0%</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-4">
+                    <button onclick="restartGame()" class="flex-1 py-4 bg-purple-700 hover:bg-purple-800 text-white font-bold text-lg rounded-2xl shadow-lg transition">
+                        重新开始 (Play Again)
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="w-full text-center text-white/60 text-xs py-2 mt-4 z-10">
+        坚振圣事备课互动专题 · 坚固信仰 肢体合一
+    </footer>
+
+    <script>
+        
+        // 10 Kahoot Questions based on "教会与教堂的团体结构"
+        const questions = [
+            {
+                q: "“教堂”(Church Building) 与 “教会”(The Church) 的最大区别是什么？",
+                options: [
+                    "两者完全没有区别，是同义词",
+                    "教堂只在主日开放，教会每天开放",
+                    "教堂是砖瓦建筑，教会是被召集的信徒身体",
+                    "教堂属于神父，教会属于平信徒"
+                ],
+                correct: 2,
+                exp: "“教堂”指向砖瓦建造的物理建筑物；而“教会”（Ecclesia）意为“被天主召集的子民”，是活生生的信仰共同体。"
+            },
+            {
+                q: "《尼西亚·君士坦丁堡信经》中宣告天主教会的“四大特征”是什么？",
+                options: [
+                    "仁慈、和平、喜乐、忠贞",
+                    "唯一、至圣、至公、从宗徒传下来的",
+                    "圣父、圣子、圣神、圣母",
+                    "祈祷、弥撒、圣事、爱德"
+                ],
+                correct: 1,
+                exp: "天主教会的四大特征为：唯一(One)、至圣(Holy)、至公(Catholic)与从宗徒传下来的(Apostolic)。"
+            },
+            {
+                q: "天主教圣秩圣事 (Holy Orders) 包含哪三个阶层？",
+                options: [
+                    "教宗、枢机、主教",
+                    "神父、修士、修女",
+                    "主教、神父、平信徒",
+                    "主教、司铎/神父、执事"
+                ],
+                correct: 3,
+                exp: "圣秩圣事的三大阶层为：主教（Episcopate）、司铎/神父（Presbyterate）及执事（Diaconate）。"
+            },
+            {
+                q: "在堂区中，依据天主教法典设立，协助神父监督主日奉献与财务预决算的是？",
+                options: [
+                    "堂区财务委员会 (PFC)",
+                    "堂区牧灵议会 (PPC)",
+                    "圣文生会 (SSVP)",
+                    "圣母军"
+                ],
+                correct: 0,
+                exp: "堂区财务委员会 (Parish Finance Council) 专门由具备财务/法律背景的教友协助神父管理堂区财产与合规。"
+            },
+            {
+                q: "平信徒占教会人口的 99%，在世俗阵地中分享基督的哪三重职份？",
+                options: [
+                    "创世职、救赎职、圣化职",
+                    "主教职、神父职、执事职",
+                    "司祭职、先知职、王者职",
+                    "祈祷职、工作职、休息职"
+                ],
+                correct: 2,
+                exp: "平信徒在世俗中分享基督的三重职份：普通司祭职（日常奉献）、先知职（福音作证）与王者职（服务社会）。"
+            },
+            {
+                q: "哪一个堂区组别主要负责为儿童及青少年提供初领圣体与坚振圣事的信仰培育？",
+                options: [
+                    "成人慕道班 (RCIA)",
+                    "主日学教理组 (Sunday School)",
+                    "辅祭团",
+                    "圣母军"
+                ],
+                correct: 1,
+                exp: "主日学教理组为儿童及青少年提供系统性的信仰培育，是信仰代代相传的关键桥梁。"
+            },
+            {
+                q: "专门探访与援助堂区附近贫困家庭、孤寡老人与病患的爱德善会是？",
+                options: [
+                    "读经员组",
+                    "辅祭团",
+                    "圣歌团",
+                    "圣文生会 (SSVP)"
+                ],
+                correct: 3,
+                exp: "圣文生会 (Society of St. Vincent de Paul) 不分种族与宗教，向弱者发放物资与助学金，活出爱德。"
+            },
+            {
+                q: "在弥撒中协助神父举行祭台礼仪、培养敬虔态度的青少年团体被称为？",
+                options: [
+                    "辅祭团 (Altar Servers)",
+                    "读经员组",
+                    "礼宾组",
+                    "圣歌团"
+                ],
+                correct: 0,
+                exp: "辅祭团在祭台前协助神父举行神圣弥撒，是许多青少年深植信仰的重要服务团体。"
+            },
+            {
+                q: "天主教强调从首任教宗圣伯多禄至今两千年未曾中断的祝圣链条被称为？",
+                options: [
+                    "梵二大公会议",
+                    "隐修会制度",
+                    "宗徒继承 (Apostolic Succession)",
+                    "圣体保领"
+                ],
+                correct: 2,
+                exp: "宗徒继承 (Apostolic Succession) 保证了天主教教理的纯洁、圣事的有效性以及普世信徒的合一。"
+            },
+            {
+                q: "圣保禄宗徒在《哥林多前书》(12:27) 中，将堂区里不同恩赐的信徒比作什么？",
+                options: [
+                    "城堡里不同的砖石",
+                    "基督身体上的不同肢体",
+                    "军队里不同的士兵",
+                    "公司里不同的员工"
+                ],
+                correct: 1,
+                exp: "“你们就是基督的身体，各自都是肢体。”教会中每个人性格恩赐不同，但都在爱中互相扶持建立奥体。"
+            }
+        ];
+
+        // Game State Variables
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let streak = 0;
+        let correctAnswersCount = 0;
+        let timer = null;
+        let timeLeft = 20;
+        let soundEnabled = true;
+        let audioCtx = null;
+
+        // Initialize Web Audio API for Kahoot Synth Sounds
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            initAudio();
+            if (!audioCtx) return;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'tick') {
+                osc.frequency.setValueAtTime(600, now);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            } else if (type === 'correct') {
+                // Happy chord
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'wrong') {
+                // Buzz sound
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('sound-icon');
+            if (soundEnabled) {
+                icon.className = 'fa-solid fa-volume-high text-xl';
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark text-xl text-red-400';
+            }
+        }
+
+        // View Switching Helpers
+        function showView(viewId) {
+            const views = ['view-start', 'view-lobby', 'view-quiz', 'view-feedback', 'view-podium'];
+            views.forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(viewId).classList.remove('hidden');
+        }
+
+        // Start Host Mode (Generate QR Code & Game PIN)
+        function startHostMode() {
+            initAudio();
+            showView('view-lobby');
+            
+            // Generate Random 6-digit Game PIN
+            const pin = Math.floor(100000 + Math.random() * 900000);
+            document.getElementById('game-pin').innerText = pin.toString().replace(/(\d{3})(\d{3})/, '$1 $2');
+
+            // Generate Dynamic QR Code of Current Page URL
+            const qrBox = document.getElementById('qrcode-box');
+            qrBox.innerHTML = '';
+            new QRCode(qrBox, {
+                text: window.location.href,
+                width: 160,
+                height: 160,
+                colorDark: "#46178f",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+
+        // Start Single Player Mode Directly
+        function startSinglePlayer() {
+            initAudio();
+            resetState();
+            showView('view-quiz');
+            loadQuestion();
+        }
+
+        function startQuizFromLobby() {
+            resetState();
+            showView('view-quiz');
+            loadQuestion();
+        }
+
+        function resetState() {
+            currentQuestionIndex = 0;
+            score = 0;
+            streak = 0;
+            correctAnswersCount = 0;
+        }
+
+        // Load Question & Start Timer
+        function loadQuestion() {
+            const qData = questions[currentQuestionIndex];
+            
+            // Update Progress & Text
+            document.getElementById('question-tracker').innerText = `问题 ${currentQuestionIndex + 1} / ${questions.length}`;
+            document.getElementById('question-text').innerText = qData.q;
+
+            // Update Answer Options
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`opt-${i}`).innerText = qData.options[i];
+            }
+
+            // Reset & Start Timer (20 seconds)
+            timeLeft = 20;
+            document.getElementById('timer-count').innerText = timeLeft;
+            const timerBar = document.getElementById('timer-bar');
+            timerBar.style.width = '100%';
+
+            clearInterval(timer);
+            timer = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer-count').innerText = timeLeft;
+                timerBar.style.width = `${(timeLeft / 20) * 100}%`;
+                playSound('tick');
+
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    submitAnswer(-1); // Time out
+                }
+            }, 1000);
+        }
+
+        // Handle Answer Submission
+        function submitAnswer(selectedIndex) {
+            clearInterval(timer);
+            const qData = questions[currentQuestionIndex];
+            const isCorrect = selectedIndex === qData.correct;
+
+            const feedbackCard = document.getElementById('feedback-card');
+            const feedbackIcon = document.getElementById('feedback-icon');
+            const feedbackTitle = document.getElementById('feedback-title');
+            const feedbackPts = document.getElementById('feedback-pts');
+            const feedbackExp = document.getElementById('feedback-exp');
+
+            if (isCorrect) {
+                playSound('correct');
+                streak++;
+                correctAnswersCount++;
+                // Speed bonus points calculation
+                const ptsGained = 500 + (timeLeft * 25) + (streak * 50);
+                score += ptsGained;
+
+                feedbackCard.className = "bg-white text-slate-900 rounded-3xl p-8 shadow-2xl w-full max-w-2xl flex flex-col items-center border-4 border-emerald-500";
+                feedbackIcon.className = "w-24 h-24 rounded-full flex items-center justify-center text-5xl mb-4 bg-emerald-500 text-white animate-bounce-subtle";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-check"></i>';
+                feedbackTitle.innerText = "回答正确！太棒了！";
+                feedbackPts.innerText = `+${ptsGained} 分 (连胜 x${streak})`;
+                feedbackPts.className = "text-xl font-bold text-emerald-600 mb-4";
+            } else {
+                playSound('wrong');
+                streak = 0;
+                feedbackCard.className = "bg-white text-slate-900 rounded-3xl p-8 shadow-2xl w-full max-w-2xl flex flex-col items-center border-4 border-red-500 animate-shake";
+                feedbackIcon.className = "w-24 h-24 rounded-full flex items-center justify-center text-5xl mb-4 bg-red-500 text-white";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                feedbackTitle.innerText = selectedIndex === -1 ? "时间到！" : "回答错误，继续加油！";
+                feedbackPts.innerText = "+0 分";
+                feedbackPts.className = "text-xl font-bold text-slate-400 mb-4";
+            }
+
+            feedbackExp.innerText = qData.exp;
+            showView('view-feedback');
+        }
+
+        // Advance to next question or final podium
+        function nextQuestion() {
+            currentQuestionIndex++;
+            if (currentQuestionIndex < questions.length) {
+                showView('view-quiz');
+                loadQuestion();
+            } else {
+                showPodium();
+            }
+        }
+
+        // Show Final Leaderboard / Podium
+        function showPodium() {
+            showView('view-podium');
+            document.getElementById('final-score').innerText = score;
+            const accuracy = Math.round((correctAnswersCount / questions.length) * 100);
+            document.getElementById('final-accuracy').innerText = `${accuracy}%`;
+
+            // Fire Confetti Animation
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 }
+                });
+            }
+        }
+
+        function restartGame() {
+            showView('view-start');
+        }
+    </script>
+</body>
+</html>
