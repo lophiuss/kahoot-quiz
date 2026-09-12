@@ -100,7 +100,7 @@ export default function HostPage() {
       setTimeLeft(left);
       if (left !== lastWholeSecond && left > 0) {
         lastWholeSecond = left;
-        sound.play("tick");
+        sound.play(left <= 3 ? "tickUrgent" : "tick");
       }
       if (left <= 0 && revealTriggeredFor.current !== game.current_question) {
         revealTriggeredFor.current = game.current_question;
@@ -113,13 +113,26 @@ export default function HostPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.game.status, state?.game.current_question, state?.game.question_started_at]);
 
+  // Fanfare the moment the podium appears (fires once per game).
+  const podiumSoundPlayed = useRef(false);
+  useEffect(() => {
+    if (state?.game.status === "podium" && !podiumSoundPlayed.current) {
+      podiumSoundPlayed.current = true;
+      sound.play("victory");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.game.status]);
+
   async function startQuiz() {
     sound.unlock(); // user gesture: safe to unlock audio here
     setError("");
     const res = await fetch(`/api/games/${pin}/start`, { method: "POST" });
     const data = await res.json();
     if (!res.ok) setError(data.error ?? "Could not start");
-    else refresh();
+    else {
+      sound.play("start");
+      refresh();
+    }
   }
 
   async function nextQuestion() {

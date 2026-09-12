@@ -187,7 +187,7 @@ export default function PlayPage() {
 
       if (leftCeil !== lastWholeSecond && leftCeil > 0) {
         lastWholeSecond = leftCeil;
-        sound.play("tick");
+        sound.play(leftCeil <= 3 ? "tickUrgent" : "tick");
       }
 
       if (
@@ -246,6 +246,16 @@ export default function PlayPage() {
     () => state?.players.find((p) => p.id === player?.id) ?? null,
     [state?.players, player?.id]
   );
+
+  // Fanfare the moment the podium appears (fires once per game).
+  const podiumSoundPlayed = useRef(false);
+  useEffect(() => {
+    if (state?.game.status === "podium" && !podiumSoundPlayed.current) {
+      podiumSoundPlayed.current = true;
+      sound.play("victory");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.game.status]);
 
   if (!player) {
     return (
